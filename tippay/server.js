@@ -83,8 +83,25 @@ app.post('/api/login', async (req, res) => {
 // Add Streamlabs token (authenticated)
 app.post('/api/add-token', authenticateToken, async (req, res) => {
   const { streamlabsToken } = req.body;
-  await User.findByIdAndUpdate(req.user.userId, { streamlabsToken });
-  res.json({ message: 'Token added' });
+  try {
+    await User.findByIdAndUpdate(req.user.userId, { streamlabsToken });
+    res.json({ message: 'Token added successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get user data (authenticated)
+app.get('/api/user', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Create tip order
