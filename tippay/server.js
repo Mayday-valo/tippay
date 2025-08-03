@@ -126,41 +126,60 @@ app.post('/api/create-order/:username', async (req, res) => {
 app.post('/api/webhook', async (req, res) => {
   // In production, verify signature using Razorpay SDK
   const payload = req.body;
-  if (payload.event === 'payment.captured') {
-    const payment = payload.payload.payment.entity;
-    const order = payload.payload.order.entity;
-    const amount = payment.amount / 100;
-    const donor = order.notes.donor;
-    const streamerId = order.notes.streamerId;
-    const streamer = await User.findById(streamerId);
+  try {
+    if (payload.event === 'payment.captured') {
+      const payment = payload.payload.payment.entity;
+      const order = payload.payload.order.entity;
+      const amount = payment.amount / 100;
+      const donor = order.notes.donor || 'Anonymous';
+      const streamerId = order.notes.streamerId;
+      const streamer = await User.findById(streamerId);
 
-    // Commission split (5%)
-    const commission = amount * 0.05;
-    const transferAmount = amount - commission;
+      if (!streamer) {
+        console.error('Streamer not found for payment:', payment.id);
+        return res.status(404).json({ error: 'Streamer not found' });
+      }
 
-    // Create transfer via Route
-    await rzp.transfers.create({
-      account: streamer.razorpayAccountId,
-      amount: transferAmount * 100,
-      currency: 'INR',
-      on_hold: false
-    });
+      // Commission split (5%)
+      const commission = amount * 0.05;
+      const transferAmount = amount - commission;
 
-    // Trigger Streamlabs alert
-    if (streamer.streamlabsToken) {
-      await axios.post('https://streamlabs.com/api/v2.0/donations', {
-        name: donor || 'Anonymous',
-        message: `Tipped ₹${amount}! Thank you!`,
-        amount: amount,
-        currency: 'INR',
-        created_at: new Date().toISOString(),
-        identifier: `tip_${Date.now()}`
-      }, {
-        headers: { Authorization: `Bearer ${streamer.streamlabsToken}` }
-      });
+      // Create transfer via Route (only if account is activated)
+      try {
+        await rzp.transfers.create({
+          account: streamer.razorpayAccountId,
+          amount: transferAmount * 100,
+          currency: 'INR',
+          on_hold: false
+        });
+      } catch (transferError) {
+        console.error('Transfer failed:', transferError.message);
+        // Continue with alert even if transfer fails
+      }
+
+      // Trigger Streamlabs alert
+      if (streamer.streamlabsToken) {
+        try {
+          await axios.post('https://streamlabs.com/api/v2.0/donations', {
+            name: donor,
+            message: `Tipped ₹${amount}! Thank you for your support!`,
+            amount: amount,
+            currency: 'INR',
+            created_at: new Date().toISOString(),
+            identifier: `tip_${Date.now()}`
+          }, {
+            headers: { Authorization: `Bearer ${streamer.streamlabsToken}` }
+          });
+        } catch (alertError) {
+          console.error('Streamlabs alert failed:', alertError.message);
+        }
+      }
+
+      console.log(`Tip processed: ₹${amount}, Commission: ₹${commission}, Transfer: ₹${transferAmount}`);
     }
-
-    console.log(`Tip processed: ₹${amount}, Commission: ₹${commission}`);
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    return res.status(500).json({ error: 'Webhook processing failed' });
   }
   res.status(200).end();
 });
