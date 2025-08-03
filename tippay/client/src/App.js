@@ -4,6 +4,7 @@ import Signup from './components/Signup';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import TipPage from './components/TipPage';
+import OverlayPage from './components/OverlayPage';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/tip/:username" element={<TipPage />} />
+        <Route path="/overlay/:username" element={<OverlayPage />} />
       </Routes>
       </div>
     </Router>
